@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayfare · Travel quotes</title>
+<style>
+:root{color-scheme:light;--ink:#23362e;--muted:#516459;--paper:#f6f3eb;--line:#c9cfc2;--accent:#285b46}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,sans-serif}main{max-width:850px;margin:auto;padding:42px 20px}header{border-bottom:1px solid var(--line);padding-bottom:27px;margin-bottom:30px}
+.kicker{text-transform:uppercase;letter-spacing:.16em;font-size:.75rem;font-weight:700;color:var(--accent)}h1,h2{font-family:Georgia,serif;font-weight:normal;line-height:1.05;margin:12px 0}h1{font-size:clamp(3rem,9vw,6rem)}h2{font-size:2rem}p{max-width:62ch;color:var(--muted)}section{background:#fffdf8;border:1px solid var(--line);padding:clamp(18px,4vw,34px);margin-bottom:18px}label{display:block;margin:13px 0;font-weight:600}textarea,input{display:block;width:100%;margin-top:6px;padding:10px;background:white;border:1px solid #839287;color:inherit;font:inherit;border-radius:4px}textarea{min-height:85px;resize:vertical}button,.link{border:0;background:var(--accent);color:white;padding:10px 17px;border-radius:4px;font:inherit;font-weight:650;cursor:pointer;display:inline-block}button:disabled{opacity:.6;cursor:wait}.row{display:grid;grid-template-columns:1fr 1fr;gap:15px}#status{min-height:1.5em;color:#823418;overflow-wrap:anywhere}#questions{white-space:pre-wrap}dd{margin:4px 0 16px;white-space:pre-wrap;overflow-wrap:anywhere}dt{font-weight:700}summary{cursor:pointer;color:var(--accent)}[hidden]{display:none!important}
+</style>
+<main>
+<header><div class="kicker">Travel planning studio · Sandbox</div><h1>Wayfare</h1><p>Turn a traveler’s brief into a quote you can review, share, and take a test deposit on.</p></header>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="planner" hidden>
+<section><div class="kicker">01 · Traveler brief</div><h2>What’s the trip?</h2><form id="briefForm">
+<label>Trip details<textarea id="brief" required minlength="12" maxlength="3000" placeholder="Two adults, four nights in Genoa, museum visits and a quiet hotel. Late May, flexible dates."></textarea></label>
+<button>Draft with AI</button></form><p>Use sample details for the demo. Trip details are sent to the configured AI service when you draft.</p></section>
+<section><div class="kicker">02 · Planner review</div><h2>Set the quote</h2>
+<p id="questions" hidden></p><form id="quoteForm">
+<label>What’s included<textarea id="scope" maxlength="1800" required></textarea></label>
+<label>Exclusions and assumptions<textarea id="exclusions" maxlength="1800" required></textarea></label>
+<div class="row"><label>Total (EUR)<input id="total" inputmode="decimal" placeholder="240.00" required></label><label>Deposit (EUR)<input id="deposit" inputmode="decimal" placeholder="60.00" required></label></div>
+<button>Create checkout link</button></form>
+<div id="share" hidden><label>Customer link<input id="shareUrl" readonly></label><a id="checkoutLink" class="link">Open customer checkout</a></div>
+</section>
+</div>
+<section id="customer" hidden><div class="kicker">Customer checkout</div><h2>Your travel quote</h2>
+<dl><dt>Included</dt><dd id="customerScope"></dd><dt>Exclusions and assumptions</dt><dd id="customerExclusions"></dd><dt>Total</dt><dd id="customerTotal"></dd><dt>Deposit due now</dt><dd id="customerDeposit"></dd></dl>
+<p>PayPal Sandbox uses test funds.</p><div id="paypalButtons"></div><p id="receipt" hidden></p></section>
+</main>
+<script type="module">
+const el = id => document.getElementById(id)
+const setStatus = value => el('status').textContent = value
+const quoteId = new URL(location.href).searchParams.get('quote')
+async function request(url, body) {
+  const response = await fetch(url, body === undefined ? {} : {
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.error)
+  return data
+}
+function handleForm(id, action) {
+  el(id).addEventListener('submit', async event => {
+    event.preventDefault()
+    const button = event.submitter
+    button.disabled = true
+    setStatus('')
+    try { await action() } catch (error) { setStatus(error.message) }
+    finally { button.disabled = false }
+  })
+}
+function showReceipt(receipt) {
+  el('paypalButtons').hidden = true
+  el('receipt').hidden = false
+  el('receipt').textContent = 'Sandbox deposit confirmed · €' + receipt.amount + ' · Capture ' + receipt.id
+}
+async function checkout() {
+  const quote = await request('/quotes/' + encodeURIComponent(quoteId))
+  el('customer').hidden = false
+  el('customerScope').textContent = quote.scope
+  el('customerExclusions').textContent = quote.exclusions
+  el('customerTotal').textContent = '€' + quote.total
+  el('customerDeposit').textContent = '€' + quote.deposit
+  if (quote.receipt) return showReceipt(quote.receipt)
+  const {clientId,currency} = await request('/config')
+  if (!clientId) throw new Error('PayPal Sandbox is not configured on this server.')
+  await new Promise((resolve,reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://www.paypal.com/sdk/js?' + new URLSearchParams({'client-id':clientId,currency,intent:'capture'})
+    script.onload = resolve
+    script.onerror = () => reject(new Error('Could not load PayPal Sandbox.'))
+    document.head.append(script)
+  })
+  await window.paypal.Buttons({
+    createOrder:async () => (await request('/orders',{id:quoteId})).orderId,
+    onApprove:async data => showReceipt(await request('/capture',{id:quoteId,orderId:data.orderID})),
+    onCancel:() => setStatus('Checkout canceled. You can try again.'),
+    onError:() => setStatus('PayPal could not complete the deposit. Reload the quote to check its status before retrying.')
+  }).render('#paypalButtons')
+}
+if (quoteId) checkout().catch(error => setStatus(error.message))
+else {
+  el('planner').hidden = false
+  handleForm('briefForm',async () => {
+    const draft = await request('/draft',{brief:el('brief').value})
+    for (const key of ['scope','exclusions']) el(key).value = draft[key]
+    el('questions').textContent = 'Clarify before quoting · ' + draft.questions
+    el('questions').hidden = false
+  })
+  handleForm('quoteForm',async () => {
+    const quote = await request('/quotes',Object.fromEntries(['scope','exclusions','total','deposit'].map(key => [key,el(key).value.trim()])))
+    const url = new URL('/',location.href)
+    url.searchParams.set('quote',quote.id)
+    el('shareUrl').value = url.href
+    el('checkoutLink').href = url.href
+    el('share').hidden = false
+  })
+}
+</script>
+</html>
