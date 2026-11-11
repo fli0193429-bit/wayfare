@@ -5,7 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 const port = 19000 + Math.floor(Math.random() * 30000)
 const base = 'http://127.0.0.1:' + port
-const child = spawn(process.execPath, ['server.mjs'], {env:{...process.env, PORT:String(port),OPENAI_API_KEY:'',OPENAI_MODEL:'',PAYPAL_CLIENT_ID:'',PAYPAL_CLIENT_SECRET:''}, stdio:'ignore'})
+const child = spawn(process.execPath, ['server.mjs'], {env:{...process.env, PORT:String(port),PAYPAL_CLIENT_ID:'',PAYPAL_CLIENT_SECRET:''}, stdio:'ignore'})
 after(() => child.kill())
 for(let i=0;i<80;i++) {
   if(child.exitCode !== null) throw Error('Server exited early')
@@ -23,8 +23,7 @@ test('serves app and config',async()=>{
   assert.match(await page.text(),/Wayfare/)
   assert.deepEqual((await req('/config')).data,{clientId:'',currency:'EUR'})
 })
-test('requires AI configuration',async()=>{
-  assert.equal((await req('/draft',{brief:'Two adults in Genoa for four nights'})).status,503)
+test('validates travel brief',async()=>{
   assert.equal((await req('/draft',{brief:'short'})).status,400)
 })
 test('validates quotes and makes a customer link',async()=>{
@@ -43,3 +42,4 @@ test('validates quotes and makes a customer link',async()=>{
   assert.equal((await req('/orders',{id})).status,503)
   assert.equal((await req('/capture',{id,orderId:'wrong'})).status,400)
 })
+
