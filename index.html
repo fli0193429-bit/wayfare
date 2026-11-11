@@ -14,7 +14,7 @@
 <div id="planner" hidden>
 <section><div class="kicker">01 · Traveler brief</div><h2>What’s the trip?</h2><form id="briefForm">
 <label>Trip details<textarea id="brief" required minlength="12" maxlength="3000" placeholder="Two adults, four nights in Genoa, museum visits and a quiet hotel. Late May, flexible dates."></textarea></label>
-<button>Draft with AI</button></form><p>Use sample details for the demo. Trip details are sent to the configured AI service when you draft.</p></section>
+<button>Draft with AI</button></form><p>Use sample details for the demo. A free local AI model summarizes your request on this server. The first draft downloads the model and can take longer. Review the result before quoting.</p></section>
 <section><div class="kicker">02 · Planner review</div><h2>Set the quote</h2>
 <p id="questions" hidden></p><form id="quoteForm">
 <label>What’s included<textarea id="scope" maxlength="1800" required></textarea></label>
@@ -83,10 +83,12 @@ if (quoteId) checkout().catch(error => setStatus(error.message))
 else {
   el('planner').hidden = false
   handleForm('briefForm',async () => {
+    setStatus('Drafting locally. The first run may take a few minutes to load the model.')
     const draft = await request('/draft',{brief:el('brief').value})
     for (const key of ['scope','exclusions']) el(key).value = draft[key]
     el('questions').textContent = 'Clarify before quoting · ' + draft.questions
     el('questions').hidden = false
+    setStatus('Draft ready. Check it against the original brief before sharing.')
   })
   handleForm('quoteForm',async () => {
     const quote = await request('/quotes',Object.fromEntries(['scope','exclusions','total','deposit'].map(key => [key,el(key).value.trim()])))
@@ -99,3 +101,4 @@ else {
 }
 </script>
 </html>
+
