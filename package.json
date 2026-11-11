@@ -1,0 +1,9 @@
+{
+  "name": "wayfare",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node --env-file=.env server.mjs", "test": "node --test server.test.mjs"},
+  "engines": {"node": ">=22"},
+  "dependencies": {"@huggingface/transformers": "3.8.1"}
+}
